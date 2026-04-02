@@ -108,7 +108,13 @@ def init_db():
 def log_activity(user_id, action, detail=None):
     """Write a row to activity_logs."""
     db = get_db()
-    ip = request.remote_addr
+    
+    # Extract real IP from proxy headers (Render load balancer)
+    if request.headers.get('X-Forwarded-For'):
+        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    else:
+        ip = request.remote_addr
+
     db.execute(
         """INSERT INTO activity_logs (user_id, action, detail, ip_address)
            VALUES (?, ?, ?, ?)""",
@@ -144,26 +150,6 @@ def admin_required(f):
 
 
 # PHISHING DETECTION ENGINE
-
-PHISHING_KEYWORDS = [
-    "verify your account", "confirm your payment", "click here immediately",
-    "your account will be suspended", "urgent action required",
-    "enter your pin", "enter your password", "login to avoid",
-    "limited time offer", "you have won", "congratulations you",
-    "free money", "send money now", "update your details",
-    "bank account blocked", "mpesa reversal", "your sim will be deactivated",
-]
-
-SUSPICIOUS_DOMAINS = [
-    "bit.ly", "tinyurl", "shorturl", "goo.gl", "ow.ly",
-    "mpesaa", "safar1com", "equit0bank", "kcbb.co", "paypa1",
-    "secure-update", "account-verify", "login-confirm",
-]
-
-SAFE_DOMAINS = [
-    "safaricom.com", "equitybank.co.ke", "kcbgroup.com",
-    "paypal.com", "mpesa.safaricom.com", "equity.co.ke",
-]
 
 def analyze_message(text: str) -> dict:
     text_lower = text.lower()
@@ -314,9 +300,9 @@ def logout():
 @login_required
 def dashboard():
     db = get_db()
-    # Recent verifications for this user
+    # Recent verifications for this user, converted to EAT (+3 hours)
     recent = db.execute(
-        """SELECT verdict, checked_at FROM verifications
+        """SELECT verdict, datetime(checked_at, '+3 hours') as checked_at FROM verifications
            WHERE user_id = ? ORDER BY checked_at DESC LIMIT 5""",
         (session["user_id"],),
     ).fetchall()
